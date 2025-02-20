@@ -16,6 +16,7 @@
 #define TFT_DC              2
 #define TFT_CS              15
 #define BRIGHTNESS_PIN      27
+//#define LIGHT_SENSOR        34  
 #define TFT_ROTATE          3
 
 #define I2S_INTERNAL        true
@@ -25,12 +26,12 @@
 #define LED_INVERT          true
 
 /* Only these 3 pins available on 1.25mm connector */
-//#define ENC_BTNR      22
-//#define ENC_BTNL      21
-//#define ENC_BTNB      35
+#define ENC_BTNR      22
+#define ENC_BTNL      21
+#define ENC_BTNB      35
 
 /* Check this for your own device */
-//#define ENC_INTERNALPULLUP      true
+#define ENC_INTERNALPULLUP      true
 
 #define TS_MODEL              TS_MODEL_XPT2046
 #define TS_CS                 33            /*  Touch screen CS pin  */ 
