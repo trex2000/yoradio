@@ -1,22 +1,16 @@
 #ifndef config_h
 #define config_h
+#pragma once
 #include "Arduino.h"
-#include <Ticker.h>
 #include <SPI.h>
 #include <SPIFFS.h>
 #include <EEPROM.h>
-//#include "SD.h"
-#include "options.h"
-#include "rtcsupport.h"
-#include "../pluginsManager/pluginsManager.h"
+#include "../displays/widgets/widgetsconfig.h" //BitrateFormat
 
 #define EEPROM_SIZE       768
 #define EEPROM_START      500
 #define EEPROM_START_IR   0
 #define EEPROM_START_2    10
-#ifndef BUFLEN
-  #define BUFLEN            170
-#endif
 #define PLAYLIST_PATH     "/data/playlist.csv"
 #define SSIDS_PATH        "/data/wifi.csv"
 #define TMP_PATH          "/data/tmpfile.txt"
@@ -25,33 +19,24 @@
 #define PLAYLIST_SD_PATH     "/data/playlistsd.csv"
 #define INDEX_SD_PATH        "/data/indexsd.dat"
 
-#ifdef DEBUG_V
-#define DBGH()       { Serial.printf("[%s:%s:%d] Heap: %d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__, xPortGetFreeHeapSize()); }
-#define DBGVB( ... ) { char buf[200]; sprintf( buf, __VA_ARGS__ ) ; Serial.print("[DEBUG]\t"); Serial.println(buf); }
-#else
-#define DBGVB( ... )
-#define DBGH()
-#endif
-#define BOOTLOG( ... ) { char buf[120]; sprintf( buf, __VA_ARGS__ ) ; Serial.print("##[BOOT]#\t"); Serial.println(buf); }
-#define EVERY_MS(x)  static uint32_t tmr; bool flag = millis() - tmr >= (x); if (flag) tmr += (x); if (flag)
-#define REAL_PLAYL   getMode()==PM_WEB?PLAYLIST_PATH:PLAYLIST_SD_PATH
-#define REAL_INDEX   getMode()==PM_WEB?INDEX_PATH:INDEX_SD_PATH
+#define REAL_PLAYL   config.getMode()==PM_WEB?PLAYLIST_PATH:PLAYLIST_SD_PATH
+#define REAL_INDEX   config.getMode()==PM_WEB?INDEX_PATH:INDEX_SD_PATH
 
 #define MAX_PLAY_MODE   1
 #define WEATHERKEY_LENGTH 58
 #define MDNS_LENGTH 24
-#if SDC_CS!=255
-  #define USE_SD
-#endif
+
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
   #define ESP_ARDUINO_3 1
 #endif
-#define CONFIG_VERSION  4
+
+#define CONFIG_VERSION  5
 
 enum playMode_e      : uint8_t  { PM_WEB=0, PM_SDCARD=1 };
-enum BitrateFormat { BF_UNCNOWN, BF_MP3, BF_AAC, BF_FLAC, BF_OGG, BF_WAV };
 
 void u8fix(char *src);
+
+void checkAllTasksStack();
 
 struct theme_t {
   uint16_t background;
@@ -142,6 +127,12 @@ struct config_t
   bool      screensaverPlayingBlank;
   char      mdnsname[24];
   bool      skipPlaylistUpDown;
+  uint16_t  abuff;
+  bool      telnet;
+  bool      watchdog;
+  uint16_t  timeSyncInterval;
+  uint16_t  timeSyncIntervalRTC;
+  uint16_t  weatherSyncInterval;
 };
 
 #if IR_PIN!=255
@@ -177,7 +168,7 @@ class Config {
     uint8_t irchck;
     ircodes_t ircodes;
 #endif
-    BitrateFormat configFmt = BF_UNCNOWN;
+    BitrateFormat configFmt = BF_UNKNOWN;
     neworkItem ssids[5];
     uint8_t ssidsCount;
     uint16_t sleepfor;
@@ -187,6 +178,11 @@ class Config {
     uint16_t screensaverTicks;
     uint16_t screensaverPlayingTicks;
     bool     isScreensaver;
+    int      newConfigMode;
+    char      tmpBuf[BUFLEN];
+    char     tmpBuf2[BUFLEN];
+    char       ipBuf[16];
+    char _stationBuf[BUFLEN/2];
   public:
     Config() {};
     //void save();
@@ -204,22 +200,23 @@ class Config {
     uint8_t setLastSSID(uint8_t val);
     void setTitle(const char* title);
     void setStation(const char* station);
+    void escapeQuotes(const char* input, char* output, size_t maxLen);
     bool parseCSV(const char* line, char* name, char* url, int &ovol);
     bool parseJSON(const char* line, char* name, char* url, int &ovol);
     bool parseWsCommand(const char* line, char* cmd, char* val, uint8_t cSize);
     bool parseSsid(const char* line, char* ssid, char* pass);
-    void loadStation(uint16_t station);
+    bool loadStation(uint16_t station);
     bool initNetwork();
     bool saveWifi();
+    void setTimeConf();
     bool saveWifiFromNextion(const char* post);
     void setSmartStart(uint8_t ss);
     void setBitrateFormat(BitrateFormat fmt) { configFmt = fmt; }
     void initPlaylist();
     void indexPlaylist();
-    #ifdef USE_SD
-      void initSDPlaylist();
-      void changeMode(int newmode=-1);
-    #endif
+    void initSDPlaylist();
+    void changeMode(int newmode=-1);
+    uint16_t playlistLength();
     uint16_t lastStation(){
       return getMode()==PM_WEB?store.lastStation:store.lastSdStation;
     }
@@ -227,7 +224,6 @@ class Config {
       if(getMode()==PM_WEB) saveValue(&store.lastStation, newstation);
       else saveValue(&store.lastSdStation, newstation);
     }
-    uint8_t fillPlMenu(int from, uint8_t count, bool fromNextion=false);
     char * stationByNum(uint16_t num);
     void setTimezone(int8_t tzh, int8_t tzm);
     void setTimezoneOffset(uint16_t tzo);
@@ -241,11 +237,27 @@ class Config {
     uint8_t getMode() { return store.play_mode/* & 0b11*/; }
     void initPlaylistMode();
     void reset();
+    void enableScreensaver(bool val);
+    void setScreensaverTimeout(uint16_t val);
+    void setScreensaverBlank(bool val);
+    void setScreensaverPlayingEnabled(bool val);
+    void setScreensaverPlayingTimeout(uint16_t val);
+    void setScreensaverPlayingBlank(bool val);
+    void setSntpOne(const char *val);
+    void setShowweather(bool val);
+    void setWeatherKey(const char *val);
+    void setSDpos(uint32_t val);
+#if IR_PIN!=255
+    void setIrBtn(int val);
+#endif
+    void resetSystem(const char *val, uint8_t clientId);
     bool spiffsCleanup();
+    void waitConnection();
+    char * ipToStr(IPAddress ip);
+    bool prepareForPlaying(uint16_t stationId);
+    void configPostPlaying(uint16_t stationId);
     FS* SDPLFS(){ return _SDplaylistFS; }
-    #if RTCSUPPORTED
-      bool isRTCFound(){ return _rtcFound; };
-    #endif
+    bool isRTCFound(){ return _rtcFound; };
     template <typename T>
     size_t getAddr(const T *field) const {
       return (size_t)((const uint8_t *)field - (const uint8_t *)&store) + EEPROM_START;
@@ -279,12 +291,9 @@ class Config {
     template <class T> int eepromWrite(int ee, const T& value);
     template <class T> int eepromRead(int ee, T& value);
     bool _bootDone;
-    #if RTCSUPPORTED
-      bool _rtcFound;
-    #endif
+    bool _rtcFound;
     FS* _SDplaylistFS;
     void setDefaults();
-    Ticker   _sleepTimer;
     static void doSleep();
     uint16_t color565(uint8_t r, uint8_t g, uint8_t b);
     void _setupVersion();
@@ -295,7 +304,6 @@ class Config {
       uint16_t station = random(1, store.countStation);
       return station;
     }
-    char _stationBuf[BUFLEN/2];
 };
 
 extern Config config;

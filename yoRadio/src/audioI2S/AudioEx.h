@@ -2,7 +2,7 @@
  * Audio.h
  *
  *  Created on: Oct 28,2018
- *  Updated on: Aug 12,2022
+ *  Updated on: Aug 23,2022
  *      Author: Wolle (schreibfaul1)
  */
 
@@ -20,7 +20,11 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <vector>
+//TODO
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcpp"
 #include <driver/i2s.h>
+#pragma GCC diagnostic pop
 
 #ifdef SDFATFS_USED
 #include <SdFat.h>  // https://github.com/greiman/SdFat
@@ -31,10 +35,6 @@
 #include <FS.h>
 #include <FFat.h>
 #endif // SDFATFS_USED
-
-#ifndef AUDIOBUFFER_MULTIPLIER2
-#define AUDIOBUFFER_MULTIPLIER2    8
-#endif
 
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
 #include "hal/gpio_ll.h"
@@ -95,8 +95,8 @@ extern __attribute__((weak)) void audio_process_extern(int16_t* buff, uint16_t l
 extern __attribute__((weak)) void audio_progress(uint32_t startpos, uint32_t endpos);
 extern __attribute__((weak)) void audio_error(const char*);
 
-#define AUDIO_INFO(...) {char buff[512 + 64]; sprintf(buff,__VA_ARGS__); if(audio_info) audio_info(buff);}
-#define AUDIO_ERROR(...) {char buff[512 + 64]; sprintf(buff,__VA_ARGS__); if(audio_error) audio_error(buff);}
+#define AUDIO_INFO(...) {char buff[512 + 64]; snprintf(buff, sizeof(buff),__VA_ARGS__); if(audio_info) audio_info(buff);}
+#define AUDIO_ERROR(...) {char buff[512 + 64]; snprintf(buff, sizeof(buff),__VA_ARGS__); if(audio_error) audio_error(buff);}
 //----------------------------------------------------------------------------------------------------------------------
 
 class AudioBuffer {
@@ -149,7 +149,7 @@ public:
 protected:
     size_t   m_buffSizePSRAM    = 300000;   // most webstreams limit the advance to 100...300Kbytes
     //size_t   m_buffSizeRAM      = 1600 * 5;
-    size_t   m_buffSizeRAM      = 1600 * AUDIOBUFFER_MULTIPLIER2;
+    size_t   m_buffSizeRAM      = 1600;
     size_t   m_buffSize         = 0;
     size_t   m_freeSpace        = 0;
     size_t   m_writeSpace       = 0;
@@ -166,6 +166,8 @@ protected:
     bool     m_f_psram          = false;    // PSRAM is available (and used...)
 };
 //----------------------------------------------------------------------------------------------------------------------
+
+struct Audio;
 
 class Audio : private AudioBuffer{
 
@@ -237,10 +239,10 @@ private:
     bool httpPrint(const char* host);
     void processLocalFile();
     void processWebStream();
+    void processWebFile();
     void processWebStreamTS();
     void processWebStreamHLS();
     void playAudioData();
-    size_t chunkedDataTransfer();
     bool readPlayListData();
     const char* parsePlaylist_M3U();
     const char* parsePlaylist_PLS();
@@ -274,7 +276,6 @@ private:
     bool parseContentType(char* ct);
     bool parseHttpResponseHeader();
     bool initializeDecoder();
-    uint16_t readMetadata(uint16_t b, bool first = false);
     esp_err_t I2Sstart(uint8_t i2s_num);
     esp_err_t I2Sstop(uint8_t i2s_num);
     void urlencode(char* buff, uint16_t buffLen, bool spacesOnly = false);
@@ -287,7 +288,15 @@ private:
     void IIR_calculateCoefficients(int8_t G1, int8_t G2, int8_t G3);
     bool ts_parsePacket(uint8_t* packet, uint8_t* packetStart, uint8_t* packetLength);
     void _computeVUlevel(int16_t sample[2]);
-    // implement several function with respect to the index of string
+    static void connectTask(void* pvParams);
+
+    //+++ W E B S T R E A M  -  H E L P   F U N C T I O N S +++
+    uint16_t readMetadata(uint16_t b, bool first = false);
+    size_t   chunkedDataTransfer(uint8_t* bytes);
+    bool     readID3V1Tag();
+    void     slowStreamDetection(uint32_t inBuffFilled, uint32_t maxFrameSize);
+
+    //++++ implement several function with respect to the index of string ++++
     void trim(char *s) {
     //fb   trim in place
         char *pe;
@@ -379,6 +388,8 @@ private:
         }
         return result;
     }
+
+    // some other functions
     size_t bigEndian(uint8_t* base, uint8_t numBytes, uint8_t shiftLeft = 8){
         size_t result = 0;
         if(numBytes < 1 or numBytes > 4) return 0;
@@ -425,11 +436,11 @@ private:
         if(str == NULL) return 0;
         uint32_t hash = 0;
         for(int i=0; i<strlen(str); i++){
-		    if(str[i] < 32) continue; // ignore control sign
-		    hash += (str[i] - 31) * i * 32;
+        if(str[i] < 32) continue; // ignore control sign
+        hash += (str[i] - 31) * i * 32;
         }
         return hash;
-	}
+  }
 
 private:
     const char *codecname[9] = {"unknown", "WAV", "MP3", "AAC", "M4A", "FLAC", "OGG", "OGG FLAC", "OPUS"};
@@ -474,8 +485,19 @@ private:
     std::vector<char*>    m_playlistContent; // m3u8 playlist buffer
     std::vector<char*>    m_playlistURL;     // m3u8 streamURLs buffer
     std::vector<uint32_t> m_hashQueue;
-
-    const size_t    m_frameSizeWav  = 1600;
+    
+    struct ConnectParams {
+      char *hostwoext = nullptr;
+      uint16_t port = 80;
+      Audio* instance = nullptr;
+      
+      ConnectParams(char* h, uint16_t p, Audio* a)
+        : hostwoext(h), port(p), instance(a) {}
+    };
+    volatile bool _connectionResult;
+    TaskHandle_t _connectTaskHandle = nullptr;
+    
+    const size_t    m_frameSizeWav  = 1024 * 8;
     const size_t    m_frameSizeMP3  = 1600;
     const size_t    m_frameSizeAAC  = 1600;
     const size_t    m_frameSizeFLAC = 4096 * 4;
@@ -528,7 +550,7 @@ private:
     uint32_t        m_PlayingStartTime = 0;         // Stores the milliseconds after the start of the audio
     uint32_t        m_resumeFilePos = 0;            // the return value from stopSong() can be entered here
     uint16_t        m_m3u8_targetDuration = 10;     //
-    bool            m_f_swm = true;                 // Stream without metadata
+    bool            m_f_metadata = false;           // assume stream without metadata
     bool            m_f_unsync = false;             // set within ID3 tag but not used
     bool            m_f_exthdr = false;             // ID3 extended header
     bool            m_f_ssl = false;

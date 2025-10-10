@@ -28,7 +28,8 @@ const ScrollConfig apSettConf     PROGMEM = {{ TFT_FRAMEWDT, 64-7, 1, WA_LEFT },
 const ScrollConfig weatherConf    PROGMEM = {{ TFT_FRAMEWDT, 64-9, 1, WA_LEFT }, 140, true, MAX_WIDTH-6*4, 0, 2, 25 }; // ПОГОДА!!
 
 /* BACKGROUNGC9106DS  */                       /* {{ left, top, fontsize, align }, width, height, outlined } */
-const FillConfig   metaBGConf     PROGMEM = {{ 0, 0, 0, WA_LEFT }, DSP_WIDTH, 17, false };
+const FillConfig   metaBGConf     PROGMEM = {{ 0, 0,  0, WA_LEFT }, DSP_WIDTH, 17, false };
+const FillConfig   metaBGConfInv  PROGMEM = {{ 0, 17, 0, WA_LEFT }, DSP_WIDTH, 1,  false };
 const FillConfig   volbarConf     PROGMEM = {{ 0, 64-1, 0, WA_LEFT }, DSP_WIDTH, 1, false };
 const FillConfig  playlBGConf     PROGMEM = {{ 0, 26, 0, WA_LEFT }, DSP_WIDTH, 12, false };
 const FillConfig  heapbarConf     PROGMEM = {{ 0, 63, 0, WA_LEFT }, DSP_WIDTH, 1, false };
@@ -39,12 +40,12 @@ const WidgetConfig bitrateConf    PROGMEM = { 0, 19, 1, WA_RIGHT };
 //const WidgetConfig voltxtConf     PROGMEM = { 32, 108, 1, WA_RIGHT };
 const WidgetConfig  iptxtConf     PROGMEM = { TFT_FRAMEWDT, 64-9, 1, WA_LEFT };
 const WidgetConfig   rssiConf     PROGMEM = { 0, 64-9, 1, WA_RIGHT };
-const WidgetConfig numConf        PROGMEM = { 0, 28, 2, WA_CENTER };
+const WidgetConfig numConf        PROGMEM = { 0, 28, 0, WA_CENTER };
 const WidgetConfig apNameConf     PROGMEM = { 0, 18, 1, WA_CENTER };
 const WidgetConfig apName2Conf    PROGMEM = { 0, 26, 1, WA_CENTER };
 const WidgetConfig apPassConf     PROGMEM = { 0, 37, 1, WA_CENTER };
 const WidgetConfig apPass2Conf    PROGMEM = { 0, 45, 1, WA_CENTER };
-const WidgetConfig  clockConf     PROGMEM = { 6, 38, 2, WA_CENTER };
+const WidgetConfig  clockConf     PROGMEM = { 6, 38, 0, WA_CENTER };
 const WidgetConfig vuConf         PROGMEM = { 1, 28, 1, WA_LEFT };
 
 const WidgetConfig bootWdtConf    PROGMEM = { 0, 64-8*2-5, 1, WA_CENTER };

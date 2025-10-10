@@ -42,9 +42,9 @@ size_t AudioBuffer::init() {
             }
         }
     } else {  // no PSRAM available, use ESP32 Flash Memory"
-        m_buffSize = m_buffSizeRAM;
+        m_buffSize = m_buffSizeRAM * config.store.abuff;
         m_buffer = (uint8_t*) calloc(m_buffSize, sizeof(uint8_t));
-        m_buffSize = m_buffSizeRAM - m_resBuffSizeRAM;
+        m_buffSize = m_buffSizeRAM * config.store.abuff - m_resBuffSizeRAM;
     }
     if(!m_buffer)
         return 0;
@@ -1203,10 +1203,23 @@ bool Audio::latinToUTF8(char* buff, size_t bufflen){
 
 //---------------------------------------------------------------------------------------------------------------------
 bool Audio::parseHttpResponseHeader() { // this is the response to a GET / request
-
+    static uint32_t notavailablefor = 0;
     if(getDatamode() != HTTP_RESPONSE_HEADER) return false;
-    if(_client->available() == 0)  return false;
-
+    if(_client->available() == 0) {
+      if (notavailablefor == 0) notavailablefor = millis();
+      if (millis() - notavailablefor > HEADER_TIMEOUT) {
+        notavailablefor = 0;
+        if(audio_showstation) audio_showstation("");
+        if(audio_icydescription) audio_icydescription("");
+        if(audio_icyurl) audio_icyurl("");
+        AUDIO_ERROR("Host not available");
+        m_lastHost[0] = '\0';
+        setDatamode(AUDIO_NONE);
+        stopSong();
+      }
+      return false;
+    }
+    notavailablefor = 0;
     char rhl[512]; // responseHeaderline
     bool ct_seen = false;
     uint32_t ctime = millis();
@@ -1338,7 +1351,7 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
             int32_t br = atoi(c_bitRate); // Found bitrate tag, read the bitrate in Kbit
             br = br * 1000;
             m_bitrate= br;
-            sprintf(chbuf, "%d", br);
+            sprintf(chbuf, "%ld", br);
             if(audio_bitrate) audio_bitrate(chbuf);
         }
 
@@ -1363,7 +1376,7 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
             int32_t i_cl = atoi(c_cl);
             m_contentlength = i_cl;
             m_streamType = ST_WEBFILE; // Stream comes from a fileserver
-            if(m_f_Log) AUDIO_INFO("content-length: %i", m_contentlength);
+            if(m_f_Log) AUDIO_INFO("content-length: %lu", m_contentlength);
         }
 
         else if(startsWith(rhl, "icy-description:")) {
@@ -1597,8 +1610,11 @@ uint32_t Audio::stop_mp3client(){
     int v=read_register(SCI_VOL);
     m_f_webstream=false;
     write_register(SCI_VOL, 0);                         // Mute while stopping
-
-    _client->flush();                                     // Flush stream client
+    #ifdef ESP_ARDUINO_3
+    _client->clear();                                     // Flush stream client
+    #else
+    _client->flush();
+    #endif
     _client->stop();                                      // Stop stream client
     write_register(SCI_VOL, v);
     return pos;
@@ -1674,23 +1690,24 @@ void Audio::setVUmeter() {
  *
  * \warning This feature is only available with patches that support VU meter.
  */
-const uint8_t everyn = 4;
+//const uint8_t everyn = 4;
 void Audio::computeVUlevel() {
-  if(!VS_PATCH_ENABLE) return;
+  /*if(!VS_PATCH_ENABLE) return;
   static uint8_t cc = 0;
   cc++;
   if(!_vuInitalized || !config.store.vumeter || cc!=everyn) return;
-  if(cc==everyn) cc=0;
+  if(cc==everyn) cc=0;*/
   int16_t reg = read_register(SCI_AICTRL3);
   vuLeft = map((uint8_t)(reg & 0x00FF), 85, 92, 0, 255);
   vuRight = map((uint8_t)(reg >> 8), 85, 92, 0, 255);
-  if(vuLeft>config.vuThreshold) config.vuThreshold = vuLeft;
+  if(vuLeft>config.vuThreshold)  config.vuThreshold=vuLeft;
   if(vuRight>config.vuThreshold) config.vuThreshold=vuRight;
 }
 
 uint16_t Audio::get_VUlevel(uint16_t dimension){
   if(!VS_PATCH_ENABLE) return 0;
-  if(!_vuInitalized || !config.store.vumeter || config.vuThreshold==0) return 0;
+  if(!_vuInitalized || !config.store.vumeter/* || config.vuThreshold==0*/) return 0;
+  computeVUlevel();
   uint8_t L = map(vuLeft, config.vuThreshold, 0, 0, dimension);
   uint8_t R = map(vuRight, config.vuThreshold, 0, 0, dimension);
   return (L << 8) | R;
@@ -1700,6 +1717,21 @@ void Audio::setConnectionTimeout(uint16_t timeout_ms, uint16_t timeout_ms_ssl){
     if(timeout_ms)     m_timeout_ms     = timeout_ms;
     if(timeout_ms_ssl) m_timeout_ms_ssl = timeout_ms_ssl;
 }
+
+void Audio::connectTask(void* pvParams) {
+  ConnectParams* params = static_cast<ConnectParams*>(pvParams);
+  Audio* self = params->instance;
+  if(self->_client){
+    self->_connectionResult = self->_client->connect(params->hostwoext, params->port/*, self->m_f_ssl ? self->m_timeout_ms_ssl : self->m_timeout_ms*/);
+  }else{
+    self->_connectionResult = false;
+  }
+  free((void*)params->hostwoext);
+  delete params;
+  self->_connectTaskHandle = nullptr;
+  vTaskDelete(nullptr);
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 bool Audio::connecttohost(String host){
     return connecttohost(host.c_str());
@@ -1747,7 +1779,7 @@ bool Audio::connecttohost(const char* host, const char* user, const char* pwd) {
     char *extension = NULL;                                  // "/mp3" in "skonto.ls.lv:8002/mp3"
 
     if(pos_slash > 1) {
-        hostwoext = (char*)malloc(pos_slash + 1);
+        hostwoext = (char*)malloc(pos_slash + 2);
         memcpy(hostwoext, h_host, pos_slash);
         hostwoext[pos_slash] = '\0';
         uint16_t extLen =  urlencode_expected_len(h_host + pos_slash);
@@ -1814,12 +1846,28 @@ bool Audio::connecttohost(const char* host, const char* user, const char* pwd) {
 
     uint32_t t = millis();
     if(m_f_Log) AUDIO_INFO("connect to %s on port %d path %s", hostwoext, port, extension);
-    res = _client->connect(hostwoext, port, m_f_ssl ? m_timeout_ms_ssl : m_timeout_ms);
-
+    //res = _client->connect(hostwoext, port, m_f_ssl ? m_timeout_ms_ssl : m_timeout_ms);
+    if(!config.store.watchdog){
+      res = _client->connect(hostwoext, port, m_f_ssl ? m_timeout_ms_ssl : m_timeout_ms);
+    }else{
+      ConnectParams* params = new ConnectParams{ strdup(hostwoext), port, this }; _connectionResult = false;
+      xTaskCreatePinnedToCore(connectTask, "ConnectTask", WATCHDOG_TASK_SIZE, params, WATCHDOG_TASK_PRIORITY, &_connectTaskHandle, WATCHDOG_TASK_CORE_ID);
+      for(;;){
+        if(millis()-t>(m_f_ssl ? m_timeout_ms_ssl : m_timeout_ms) || _connectionResult) break;
+        vTaskDelay(10);
+      }
+      res = _connectionResult;
+      if (_connectTaskHandle!=nullptr) {
+        vTaskDelete(_connectTaskHandle);
+        _connectTaskHandle = nullptr;
+        AUDIO_INFO("WATCH DOG HAS FINISHED A WORK, BYE!");
+      }
+    }
+    
     if(res){
         uint32_t dt = millis() - t;
         strcpy(m_lastHost, l_host);
-        AUDIO_INFO("%s has been established in %u ms, free Heap: %u bytes",
+        AUDIO_INFO("%s has been established in %lu ms, free Heap: %lu bytes",
                     m_f_ssl?"SSL":"Connection", dt, ESP.getFreeHeap());
         m_f_running = true;
     }
@@ -2055,7 +2103,7 @@ bool Audio::connecttospeech(const char* speech, const char* lang){
         return false;
     }
     clientsecure.print(resp);
-    sprintf(chbuf, "SSL has been established, free Heap: %u bytes", ESP.getFreeHeap());
+    sprintf(chbuf, "SSL has been established, free Heap: %lu bytes", ESP.getFreeHeap());
     if(audio_info) audio_info(chbuf);
 
     m_f_webstream = true;
@@ -2146,7 +2194,7 @@ int Audio::read_MP3_Header(uint8_t *data, size_t len) {
         if(m_f_localfile){
             m_contentlength = getFileSize();
             ID3version = 0;
-            sprintf(chbuf, "Content-Length: %u", m_contentlength);
+            sprintf(chbuf, "Content-Length: %lu", m_contentlength);
             if(audio_info) audio_info(chbuf);
         }
         m_controlCounter ++;
@@ -2526,7 +2574,7 @@ uint32_t Audio::getAudioCurrentTime(){
       }
       m_localBitrateSend = prev_bitrate==m_avr_bitrate;
       if(m_avr_bitrate==0) return 0;
-      sprintf(brbuf, "%d", m_avr_bitrate);
+      sprintf(brbuf, "%lu", m_avr_bitrate);
       if(audio_bitrate && !m_localBitrateSend) audio_bitrate(brbuf);
       m_localBitrateSend = true;
       m_audioFileDuration = 8 * ((float)m_audioDataSize / (m_avr_bitrate));
@@ -2539,7 +2587,7 @@ uint32_t Audio::getAudioCurrentTime(){
     m_avr_bitrate = SCIStatus * 8;
     m_localBitrateSend = prev_bitrate==m_avr_bitrate;
     if(m_avr_bitrate==0) return 0;
-    sprintf(brbuf, "%d", m_avr_bitrate);
+    sprintf(brbuf, "%lu", m_avr_bitrate);
     if(audio_bitrate && !m_localBitrateSend) audio_bitrate(brbuf);
     m_localBitrateSend = true;
     m_audioFileDuration = 8 * ((float)m_audioDataSize / (m_avr_bitrate));

@@ -1,15 +1,20 @@
 #include "Arduino.h"
-#include "controls.h"
 #include "options.h"
+#include "controls.h"
 #include "config.h"
 #include "player.h"
 #include "display.h"
 #include "network.h"
 #include "netserver.h"
+#include "../pluginsManager/pluginsManager.h"
 
 long encOldPosition  = 0;
 long enc2OldPosition  = 0;
 int lpId = -1;
+
+#if DSP_MODEL==DSP_DUMMY
+#define DUMMYDISPLAY
+#endif
 
 #define ISPUSHBUTTONS BTN_LEFT!=255 || BTN_CENTER!=255 || BTN_RIGHT!=255 || ENC_BTNB!=255 || BTN_UP!=255 || BTN_DOWN!=255 || ENC2_BTNB!=255 || BTN_MODE!=255
 #if ISPUSHBUTTONS
@@ -34,6 +39,7 @@ constexpr uint8_t nrOfButtons = sizeof(button) / sizeof(button[0]);
 #endif
 
 #if (ENC_BTNL!=255 && ENC_BTNR!=255) || (ENC2_BTNL!=255 && ENC2_BTNR!=255)
+  #include "../yoEncoder/yoEncoder.h"
   #if (ENC_BTNL!=255 && ENC_BTNR!=255)
     yoEncoder encoder = yoEncoder(ENC_BTNL, ENC_BTNR, ENCODER_STEPS, ENC_INTERNALPULLUP);
   #endif
@@ -56,12 +62,11 @@ constexpr uint8_t nrOfButtons = sizeof(button) / sizeof(button[0]);
 #include "../IRremoteESP8266/IRtext.h"
 #include "../IRremoteESP8266/IRutils.h"
 uint8_t irVolRepeat = 0;
-const uint16_t kCaptureBufferSize = 1024;
-const uint8_t kTimeout = IR_TIMEOUT;
+//const uint16_t kCaptureBufferSize = 1024;
 const uint16_t kMinUnknownSize = 12;
 #define LEGACY_TIMING_INFO false
 
-IRrecv irrecv(IR_PIN, kCaptureBufferSize, kTimeout, true);
+IRrecv irrecv(IR_PIN, IR_BUFSIZE, IR_TIMEOUT, true);
 decode_results irResults;
 #endif
 
@@ -116,7 +121,7 @@ void initControls() {
   }
 #endif
 #if (TS_MODEL!=TS_MODEL_UNDEFINED) && (DSP_MODEL!=DSP_DUMMY)
-  touchscreen.init();
+  touchscreen.init(display.width(), display.height());
 #endif
 #if IR_PIN!=255
   pinMode(IR_PIN, INPUT);
@@ -223,7 +228,7 @@ void irNumber(uint8_t num) {
   display.putRequest(NEWMODE, NUMBERS);
   if (display.numOfNextStation > UINT16_MAX / 10) return;
   s = display.numOfNextStation * 10 + num;
-  if (s > config.store.countStation) return;
+  if (s > config.playlistLength()) return;
   display.numOfNextStation = s;
   display.putRequest(NEXTSTATION, s);
 }
@@ -464,8 +469,9 @@ void controlsEvent(bool toRight, int8_t volDelta) {
   if (display.mode() == STATIONS) {
     display.resetQueue();
     int p = toRight ? display.currentPlItem + 1 : display.currentPlItem - 1;
-    if (p < 1) p = config.store.countStation;
-    if (p > config.store.countStation) p = 1;
+    uint16_t cs = config.playlistLength();
+    if (p < 1) p = cs;
+    if (p > cs) p = 1;
     display.currentPlItem = p;
     display.putRequest(DRAWPLAYLIST, p);
   }
@@ -502,7 +508,8 @@ void onBtnClick(int id) {
           #ifdef DSP_LCD
             delay(200);
           #endif
-          player.sendCommand({PR_PLAY, display.currentPlItem});
+          display.putRequest(CLOSEPLAYLIST, display.currentPlItem);
+          //player.sendCommand({PR_PLAY, display.currentPlItem});
         }
         if(network.status==SOFT_AP || display.mode()==LOST){
           #ifdef USE_SD

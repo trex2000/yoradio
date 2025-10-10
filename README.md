@@ -67,6 +67,7 @@ https://aliexpress.com/item/32965676064.html
 - or **ILI9486** (Testing mode) 3.5' 480x320 SPI https://aliexpress.com/item/1005001999296476.html?sku_id=12000018365356568
 - or **SSD1322** 2.8' 256x64 SPI https://aliexpress.com/item/1005003480981568.html
 - or **ST7920** 2.6' 128x64 SPI https://aliexpress.com/item/32699482638.html
+- or **ST7789** 2.25' 284x76 SPI https://aliexpress.ru/item/1005009016973081.html
 
 (see [Wiki](https://github.com/e2002/yoradio/wiki/Available-display-models) for more details)
 
@@ -234,7 +235,163 @@ Work is in progress...
 
 ---
 ## Version history
-### 0.9.434
+#### v0.9.720
+- PR #211 https://github.com/e2002/yoradio/pull/211
+- fix packets lost in HLS-TS
+- fix stuttering if datatransfer is chunked
+- split processWebStream/processWebFile
+- fixed the error of connecting to the next access points from the list if the first one is unavailable
+- fixed playback control errors from Home Assistant
+- the DEF_SPI_FREQ parameter, intended for setting the user speed SPI of displays, has been removed from the settings (they work fine anyway)
+- fixed an error connecting to the MQTT server during initial boot in SDCARD mode
+
+#### v0.9.711
+- fixed compilation error for LCD displays #210
+
+#### v0.9.710
+- rewritten ILI9225 display driver: now it supports framebuffer like the others and is more stable 👍🏻
+- fixed clock update bug when changing timezone in settings
+- bug/warnings fixes
+
+#### v0.9.702
+- fixed compilation error for Nokia5110 displays
+
+#### v0.9.700
+- added support for **ST7789 320x170** displays \
+  `#define DSP_MODEL DSP_ST7789_170`
+- added support for **LCD 20x2** displays (e.g. [WH2002A](https://aliexpress.com/item/32812259852.html)) \
+  `#define DSP_MODEL DSP_2002` or \
+  `#define DSP_MODEL DSP_2002I2C`
+- added Russian language support for LCD displays that natively support Russian \
+  to enable, add `#define LCD_RUS` in **myoptions.h** \
+  PS: I cannot say in advance whether your LCD display supports Russian. \
+  PS2: the method of “Russification” for LCD displays without native Russian support (based on 8 custom characters) cannot be used, since 8 symbols are too few to display all the required information.
+- bug fixes
+
+#### v0.9.693
+- fixed incorrect behavior of the `HIDE_VU` setting [#205](https://github.com/e2002/yoradio/issues/205)
+- fixed `CORRUPT HEAP` error when playing "invalid links" [#203](https://github.com/e2002/yoradio/issues/203)
+- optimized code of `utfToAscii` [utf8Rus](https://github.com/e2002/yoradio/blob/main/yoRadio/src/displays/tools/utf8Rus.cpp)
+
+#### v0.9.689
+- fixed artifacts in scrolling text
+
+#### v0.9.686
+- fixed SD card connection bug in configurations with `SD_SPIPINS` defined
+- time synchronization setting
+
+#### v0.9.682
+- fixed bug with redundant epoch time being added to the tag in SD mode https://t.me/yoradiochat/66688
+
+#### v0.9.680
+- fixed clock display bug when exiting screensaver in playback mode
+- increased number of SD card initialization attempts when switching mode
+
+#### v0.9.676
+- fixed bug with incorrect text clipping on scrolling widgets
+
+#### v0.9.670
+- display performance optimization
+- to improve rendering smoothness, a framebuffer has been added for TFT SPI displays **ST7735, ST7789, ILI9341, GC9106, ST7796, GC9A01A, ILI9488, ILI9486** \
+  the framebuffer is applied only to moving elements (scrolling text, VU meter, clock) \
+  the framebuffer works on modules with additional **PSRAM** \
+  on such modules, the framebuffer is enabled automatically, no extra steps required \
+  to disable the framebuffer, add `#define USE_FBUFFER false` in **myoptions.h** \
+  on modules without PSRAM, the framebuffer is disabled by default. It can be forced on by adding `#define SFBUFFER` in **myoptions.h** \
+  but in that case, free memory (as well as HTTPS streams) will be severely limited
+- fixed compilation error for Nextion displays
+- code cleanup, optimization, and refactoring
+- bug fixes
+
+#### v0.9.574
+- fixed compilation error for certain displays when `#define DSP_INVERT_TITLE false` is set
+- fixed compilation error for `DSP_DUMMY`
+
+#### v0.9.570
+- added support for ST7789 284x76 2.25' SPI displays https://aliexpress.ru/item/1005009016973081.html \
+  note: the brightness pin of this display should be pulled up to GND
+
+#### v0.9.561
+**!!! a [full update](#update-over-web-interface) with Sketch data upload is required !!!**\
+  or-> just upload `yoRadio/data/www/script.js.gz` to Webboard Uploader http://radioipaddr/webboard \
+  After updating please clear browser cache.
+- fixed error when switching to SD Card mode
+- fixed issue causing random reboots
+- fixed preview playback bug in Playlist Editor
+
+#### v0.9.555
+- fixed error "assert failed: udp_new_ip_type /IDF/components/lwip/lwip/src/core/udp.c:1278 (Required to lock TCPIP core functionality!)"\
+  part #2
+- weather synchronization code rewritten
+
+#### v0.9.553
+- fix "No 'Access-Control-Allow-Origin' header is present on the requested resource" on saving playlist\
+  just reupload the file `script.js.gz` with Webboard uploader
+- fixed error "assert failed: udp_new_ip_type /IDF/components/lwip/lwip/src/core/udp.c:1278 (Required to lock TCPIP core functionality!)"
+- fixed error "Exception in status_listener when handling msg" in HA component
+
+#### v0.9.552
+- fixed compilation error for ESP cores version below 3.0.0\
+  Thanks to @salawalas ! https://github.com/e2002/yoradio/pull/197/
+- disabled websocket reconnection on all pages except the start page "/"\
+  just reupload the file `script.js.gz`
+
+#### v0.9.550
+**!!! a [full update](#update-over-web-interface) with Sketch data upload is required. After updating please press CTRL+F5 in browser !!!**\
+or-> just upload all files from data/www (11 pcs) to Webboard Uploader http://radioipaddr/webboard
+- fixed the issue with selecting all rows in the playlist editor
+- netserver optimization – Part 2
+- cleanup – Part 1
+- page class migrated from LinkedList to std::list (Huge thanks to @vortigont!)
+  https://github.com/vortigont/yoradio/commit/b6d7fdd973bfa7395a894ceceaef40925b3f5161#diff-5df2b3b2edb81bdf3594469c55ec7093c641d13a2555a0cea25e7f3380c7de1a
+- added WebSocket connection check in the web interface
+- buffer indicator added to the web interface
+- display performance optimization (Big thanks to @vortigont!) https://github.com/e2002/yoradio/pull/196/
+- audio buffer size setting for modules without PSRAM moved to the web interface (new value applies after reboot, optimal value is 7)
+- added option in the web interface to disable the Telnet server
+- added option in the web interface to enable the Watchdog that stops connect to broken streams
+- settings for time and weather synchronization intervals have been added to the web interface
+- bug fixes, optimization
+
+#### v0.9.533
+- fixed compilation error for esp32 core version lower than 3.0.0
+- fixed error setting display brightness to 1
+- fixed error setting IR tolerance value (upload a new file `options.html.gz` via WEB Board Uploader and press Ctrl+F5 on the settings page)
+
+#### v0.9.530
+- optimization of webserver/socket code in netserver.cpp, part#1
+- added support for ArduinoOTA (OTA update from Arduino IDE) (disabled by default)\
+  to enable you need to add to myoptions.h: `#define USE_OTA true`\
+  set password: in myoptions.h `#define OTA_PASS "myotapassword12345"`
+- in web interface added basic HTTP authentication capability (disabled by default)\
+  to enable you need to add to myoptions.h:\
+  `#define HTTP_USER "user"`\
+  `#define HTTP_PASS "password"`
+- added "emergency firmware uploader" form (for unforeseen cases) http://ipaddress/emergency
+- added config (sys.config) telnet command that displays the same information usually shown over serial at boot.
+- bug fixes 🪲
+
+#### v0.9.515
+- fixed a bug with resetting all parameters when resetting only one section of parameters
+
+#### v0.9.512
+- fixed bug with saving ntp server #1 value
+
+#### v0.9.511
+In this version, the contents of the data/www directory have changed, so that the first time you flash it, you will be greeted by WEB Board Uploader. Just upload all the files from data/www (11 pcs) to it\
+or -> **!!! a [full update](#update-over-web-interface) with Sketch data upload is required. After updating please press CTRL+F5 in browser !!!**
+- fixed a bug with saving smartstart mode
+- fixed a bug with no restart when initially uploading files to spiffs
+- fixed a bug with hanging on unavailable hosts
+- fixed a bug with attempting to connect with an empty playlist
+- fixed a bug with passing strings with quotes in mqtt
+- fixing some other bugs
+- web interface rewritten from scratch (well, almost), bugs added 👍
+- added listening to links in the browser in playlistEditor
+- buttons reboot (reboot) format (spiffs format) and reset (reset settings to default) have been added to the settings
+- the beginnings of theming (theme.css) (just a list of global colors that can be changed, and then uploaded to theme.css via WB uploader)
+
+#### v0.9.434
 - fixed the issue with exiting Screensaver Blank Screen mode via button presses and IR commands.
 - reduced the minimum frequency for tone control on I2S modules to 80Hz.
 - increased the display update task delay to 10 TICKS.
@@ -242,13 +399,13 @@ Work is in progress...
 - when ENCODER2 is connected, the UP and DOWN buttons now work as PREV and NEXT (single click).
 - implemented backlight off in Screensaver Blank Screen mode.
 
-### 0.9.428
+#### v0.9.428
 - fixed freezing after SD scanning during playback
 - AsyncWebSocket queue increased to 128
 - fixed VU meter  overlapping the clock on displays
 - fixed Guru Meditation error when loading in SD mode with SD card removed
 
-### 0.9.420
+#### v0.9.420
 **!!! a [full update](#update-over-web-interface) with Sketch data upload is required. After updating please press CTRL+F5 in browser !!!**
 - added screensaver mode during playback, configurable via the web interface, pull request[#129](https://github.com/e2002/yoradio/pull/129)
 - added blank screen mode to screensaver, configurable via the web interface, pull request[#129](https://github.com/e2002/yoradio/pull/129)
@@ -258,21 +415,21 @@ Work is in progress...
   `#define CONFIG_ASYNC_TCP_RUNNING_CORE 0`
 - bug fixes
 
-### v0.9.412
+#### v0.9.412
 **!!! a [full update](#update-over-web-interface) with Sketch data upload is required. After updating please press CTRL+F5 in browser !!!**
 - added mDNS support, configurable via the web interface, pull[#125](https://github.com/e2002/yoradio/pull/125)
 - added a setting that allows you to switch stations with the UP and DOWN buttons immediately, bypassing the playlist, configurable via the web interface, pull[#125](https://github.com/e2002/yoradio/pull/125)
 
-### v0.9.399
+#### v0.9.399
 **!!! a [full update](#update-over-web-interface) with Sketch data upload is required. After updating please press CTRL+F5 in browser !!!**
 - added a screensaver mode, configurable via the web interface.
 - changes to the tone control algorithm for the VS1053.
 
-### v0.9.390
+#### v0.9.390
 - updated the VU meter algorithms - shamelessly borrowed from @schreibfaul1, ([thanks a lot!](https://github.com/schreibfaul1/ESP32-audioI2S/blob/1296374fc513a6d6bfaa3b1ca08f6ba938b18d99/src/Audio.cpp#L5030))
 - fixed the magic error "HSPI" redefined.
 
-### v0.9.380
+#### v0.9.380
 - fixed compilation error for ESP32 cores >= 3.1.0
 - fixed freezing error with incorrectly configured RTC module
 - [www|uart|telnet] new command `mode` - change SD/WEB mode. (0 - WEB, 1 - SD, 2 - Toggle)
@@ -281,7 +438,7 @@ Work is in progress...
 #### v0.9.375
 - fixed the issue with saving settings for TIMEZONE.
 
-### v0.9.373
+#### v0.9.373
 - fixed the issue with displaying the settings page on fresh ESP modules after saving the weather key
  (a [reset](https://github.com/e2002/yoradio/wiki/List-of-available-commands-(UART-telnet-GET-POST)) may be required)
 
